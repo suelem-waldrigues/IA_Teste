@@ -17,9 +17,11 @@ def modelo_bayesiano_risco_clima(temperatura: float, umidade: float) -> float:
         probabilidade = (fator_termico * 0.4 + fator_umidade * 0.6) * 100
         return min(max(probabilidade, 0.0), 100.0)
     else:
-        # PONTO DE AUDITORIA CRÍTICO: Bloco sob análise de comportamento extremo.
-        probabilidade = (fator_termico * 0.4 - (fator_umidade * 1.2)) * 100
-        return probabilidade
+      probabilidade = (fator_termico * 0.4 + (fator_umidade * 0.8)) * 100
+
+      probabilidade = min(max(probabilidade, 0.0), 100.0)
+
+      return probabilidade
 
 
 # =====================================================================
@@ -32,40 +34,65 @@ class GuardiaoQualidadeIA:
 
     def verificar_data_drift(self, lote_temperaturas: list, lote_umidades: list) -> bool:
         """Avalia a consistência estocástica dos dados de produção."""
+
         media_temp = float(np.mean(lote_temperaturas))
         media_umi = float(np.mean(lote_umidades))
-        
+
+        desvio_temp = float(np.std(lote_temperaturas))
+        desvio_umi = float(np.std(lote_umidades))
+
         print(f"-> Analisando Lote - Média Temp: {media_temp:.1f}°C | Média Umidade: {media_umi:.1f}%")
-        
-        # TO-DO [EQUIPE]: A validação atual por média aritmética simples é vulnerável.
-        # Se um sensor reportar falha extrema e outro compensar, a média oculta o erro.
-        # Refaturem este método para rejeitar lotes usando também o Desvio Padrão (np.std).
-        # Critério SRE: desvio de temp > 5.0°C OU umidade > 15.0% deve disparar ALERTA CRÍTICO e retornar False.
-        
+        print(f"-> Desvio Padrão Temp: {desvio_temp:.1f}°C | Desvio Padrão Umidade: {desvio_umi:.1f}%")
+
+        if desvio_temp > 5.0 or desvio_umi > 15.0:
+            print("🚨 [ALERTA CRÍTICO] Alta volatilidade detectada nos sensores!")
+            return False
+
         if media_temp > self.limite_superior_temp or media_umi < self.limite_inferior_umidade:
             print("❌ [ALERTA DE QUALIDADE] Data Drift Detectado! Clima fora do padrão.")
             return False
-            
+
         print("✅ [SUCESSO] Dados aprovados no teste de consistência por média.")
         return True
 
     def testar_relacao_metamorfica_umidade(self, temp_fixa: float, umidade_base: float) -> bool:
         """Valida a propriedade de monotonicidade do modelo em relação à umidade."""
+
         umidade_elevada = umidade_base + 15.0
-        
+
         risco_base = modelo_bayesiano_risco_clima(temp_fixa, umidade_base)
         risco_alto = modelo_bayesiano_risco_clima(temp_fixa, umidade_elevada)
-        
+
         print(f"\n[Teste Metamórfico] Mantendo {temp_fixa}°C fixos:")
         print(f"   * Cenário A (Umidade {umidade_base:.1f}%): Risco de Desastre = {risco_base:.1f}%")
         print(f"   * Cenário B (Umidade {umidade_elevada:.1f}%): Risco de Desastre = {risco_alto:.1f}%")
-        
+
         if risco_alto >= risco_base:
             print("✅ [SUCESSO] Propriedade Metamórfica Mantida. IA agindo de forma lógica.")
             return True
         else:
             print("❌ [BUG CRÍTICO DETECTADO] O ar saturou de umidade, mas o risco calculado CAIU! A IA alucinou.")
             return False
+
+    def testar_relacao_metamorfica_temperatura(self, umidade_fixa: float, temp_base: float) -> bool:
+        """Valida a propriedade de monotonicidade do modelo em relação à temperatura."""
+
+        temp_elevada = temp_base + 5.0
+
+        risco_base = modelo_bayesiano_risco_clima(temp_base, umidade_fixa)
+        risco_alto = modelo_bayesiano_risco_clima(temp_elevada, umidade_fixa)
+
+        print(f"\n[Teste Metamórfico Temperatura] Mantendo {umidade_fixa}% de umidade fixa:")
+        print(f"   * Temperatura {temp_base:.1f}°C -> Risco = {risco_base:.1f}%")
+        print(f"   * Temperatura {temp_elevada:.1f}°C -> Risco = {risco_alto:.1f}%")
+
+        if risco_alto >= risco_base:
+            print("✅ [SUCESSO] Propriedade Metamórfica da Temperatura Mantida.")
+            return True
+        else:
+            print("❌ [BUG CRÍTICO] A temperatura aumentou e o risco diminuiu.")
+            return False
+  
 
     # TO-DO [EQUIPE]: Implementar o método 'testar_relacao_metamorfica_temperatura'
     # Vocês devem fixar uma umidade e provar que, se a temperatura aumentar em 5°C,
@@ -99,5 +126,11 @@ if __name__ == "__main__":
     
     print("\n--- Cenário Metamórfico B: Iminência do Extremo ---")
     guardiao.testar_relacao_metamorfica_umidade(temp_fixa=35.0, umidade_base=75.0)
+    print("\n--- Cenário Metamórfico C: Temperatura Crescente ---")
+
+    guardiao.testar_relacao_metamorfica_temperatura(
+    umidade_fixa=70.0,
+    temp_base=25.0
+)
 
     # TO-DO [EQUIPE]: Chamar aqui a nova suíte de testes de temperatura que criaram.
